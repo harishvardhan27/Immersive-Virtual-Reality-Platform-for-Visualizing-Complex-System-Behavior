@@ -80,8 +80,7 @@ export default function useSerial() {
     isConnected,
     value: normalizedValue,
     previousValue: normalizedPrevious,
-    rawValue: value,
-    rawPreviousValue: previousValue,
+    rawValue: [value, previousValue],
     error,
     connect,
     disconnect

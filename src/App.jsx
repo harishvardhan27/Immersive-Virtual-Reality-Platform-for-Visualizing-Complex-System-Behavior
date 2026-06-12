@@ -1,8 +1,14 @@
-import React from 'react';
-import NeuralNetworkViz from './utils/mm';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Landing from './pages/Landing';
+import Playground from './pages/Playground';
 
-function App() {
-  return <NeuralNetworkViz />;
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/playground" element={<Playground />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
-
-export default App;
