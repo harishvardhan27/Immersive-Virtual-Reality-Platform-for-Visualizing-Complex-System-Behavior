@@ -2,102 +2,78 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 export default function useSerial() {
   const [isConnected, setIsConnected] = useState(false);
-  const [value, setValue] = useState(0);
-  const [previousValue, setPreviousValue] = useState(0);
+  const [value, setValue] = useState(0);         // sensor 1 (A0)
+  const [previousValue, setPreviousValue] = useState(0); // sensor 2 (A1)
   const [error, setError] = useState(null);
   const [port, setPort] = useState(null);
   const readerRef = useRef(null);
-  const writerRef = useRef(null);
+  const bufferRef = useRef('');
 
-  // Check if Web Serial API is supported
   const isSupported = 'serial' in navigator;
 
   const connect = useCallback(async () => {
-    if (!isSupported) {
-      setError('Web Serial API not supported in this browser');
-      return;
-    }
-
+    if (!isSupported) { setError('Web Serial API not supported'); return; }
     try {
-      // Request a port and open a connection
       const selectedPort = await navigator.serial.requestPort();
       await selectedPort.open({ baudRate: 9600 });
-
       setPort(selectedPort);
       setIsConnected(true);
       setError(null);
 
-      // Set up reader
       const reader = selectedPort.readable.getReader();
       readerRef.current = reader;
 
-      // Read data continuously
       const readLoop = async () => {
         try {
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-
-            // Convert Uint8Array to string
-            const text = new TextDecoder().decode(chunk);
-            const lines = text.split('\n');
-
+            bufferRef.current += new TextDecoder().decode(chunk);
+            const lines = bufferRef.current.split('\n');
+            bufferRef.current = lines.pop(); // keep incomplete line in buffer
             lines.forEach(line => {
               const trimmed = line.trim();
-              if (trimmed && !isNaN(trimmed)) {
-                const newValue = parseFloat(trimmed);
-                setPreviousValue(value); // Store current value as previous
-                setValue(newValue);      // Update to new value
+              if (!trimmed) return;
+              const parts = trimmed.split(',');
+              if (parts.length === 2) {
+                const v1 = parseFloat(parts[0]);
+                const v2 = parseFloat(parts[1]);
+                if (!isNaN(v1) && !isNaN(v2)) {
+                  setValue(v1);
+                  setPreviousValue(v2);
+                }
               }
             });
           }
-        } catch (error) {
-          console.error('Serial read error:', error);
+        } catch (err) {
           setError('Error reading from serial port');
         }
       };
-
       readLoop();
-
-    } catch (error) {
-      console.error('Serial connection error:', error);
+    } catch (err) {
       setError('Failed to connect to serial port');
     }
   }, [isSupported]);
 
   const disconnect = useCallback(async () => {
     try {
-      if (readerRef.current) {
-        await readerRef.current.cancel();
-        readerRef.current = null;
-      }
-      if (port) {
-        await port.close();
-        setPort(null);
-      }
+      if (readerRef.current) { await readerRef.current.cancel(); readerRef.current = null; }
+      if (port) { await port.close(); setPort(null); }
       setIsConnected(false);
       setValue(0);
       setPreviousValue(0);
-    } catch (error) {
-      console.error('Disconnect error:', error);
-      setError('Error disconnecting from serial port');
+      bufferRef.current = '';
+    } catch (err) {
+      setError('Error disconnecting');
     }
   }, [port]);
 
-  // Cleanup on unmount
   useEffect(() => {
-    return () => {
-      if (isConnected) {
-        disconnect();
-      }
-    };
+    return () => { if (isConnected) disconnect(); };
   }, [isConnected, disconnect]);
 
-  // Normalize sensor value (0-1023 typical Arduino range to 0-1)
-  const normalizedValue = Math.min(Math.max(value / 1023, 0), 1);
+  const normalizedValue    = Math.min(Math.max(value / 1023, 0), 1);
   const normalizedPrevious = Math.min(Math.max(previousValue / 1023, 0), 1);
-
-  console.log('Arduino Raw Value:', value, 'Normalized:', normalizedValue.toFixed(3));
 
   return {
     isSupported,
